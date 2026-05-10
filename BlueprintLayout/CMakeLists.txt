@@ -10,7 +10,9 @@ add_executable(BlueprintLayout
         src/io/DataLoader.cpp
         src/io/DataLoader.h
         src/view/GraphRenderer.cpp
-        src/view/GraphRenderer.h)
+        src/view/GraphRenderer.h
+        src/algo/AutoLayout.cpp
+        src/algo/AutoLayout.h)
 target_link_libraries(BlueprintLayout PRIVATE
         nlohmann_json::nlohmann_json
         raylib)

@@ -3,8 +3,11 @@
 #include <iostream>
 #include <raylib.h>
 
+#include "algo/AutoLayout.h"
+
 int main() {
     blueprint::Graph myGraph;
+
     try {
         myGraph = blueprint::DataLoader::loadGraph("data/blueprint.json");
     } catch (const std::exception& e) {
@@ -17,6 +20,7 @@ int main() {
     InitWindow(screenWidth, screenHeight, "Blueprint Auto Layout");
     SetTargetFPS(60);
 
+    blueprint::AutoLayout::calculatePositions(myGraph);
     blueprint::GraphRenderer renderer(screenWidth, screenHeight);
 
     while (!WindowShouldClose()) {
