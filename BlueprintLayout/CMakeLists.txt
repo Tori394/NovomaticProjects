@@ -18,8 +18,13 @@ target_link_libraries(BlueprintLayout PRIVATE
         raylib)
 
 enable_testing()
-add_executable(BlueprintTests tests/layout_tests.cpp)
+add_executable(BlueprintTests
+        tests/test_main.cpp
+        src/model/Graph.h
+        src/algo/AutoLayout.cpp
+)
 target_link_libraries(BlueprintTests PRIVATE
         GTest::gtest_main
         nlohmann_json::nlohmann_json
 )
+add_test(NAME AllTests COMMAND BlueprintTests)
