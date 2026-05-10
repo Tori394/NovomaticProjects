@@ -15,8 +15,18 @@ namespace blueprint {
         Graph graph;
 
         // JSON -> vec
-        graph.setNodes(j.at("nodes").get<std::vector<Node>>());
+        auto nodes = j.at("nodes").get<std::vector<Node>>();
         graph.setEdges(j.at("edges").get<std::vector<Edge>>());
+
+        for (auto& node : nodes) {
+            if (node.name == "Branch") {
+                node.type = NodeType::BRANCH;
+            } else if (node.name.find("Event") != std::string::npos) {
+                node.type = NodeType::EVENT;
+            }
+        }
+
+        graph.setNodes(nodes);
 
         return graph;
     }

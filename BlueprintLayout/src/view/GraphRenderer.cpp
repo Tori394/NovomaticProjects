@@ -48,8 +48,24 @@ namespace blueprint {
         }
 
         for (const auto& node : graph.getNodes()) {
-            DrawCircle(node.x, node.y, 20, BLUE);
-            DrawText(node.name.c_str(), node.x - 25, node.y - 35, 18, BLACK);
+            switch (node.type) {
+                case NodeType::BRANCH:
+                    // Romb
+                    DrawPoly(Vector2{node.x, node.y}, 4, 30.0f, 0.0f, ORANGE);
+                    break;
+
+                case NodeType::EVENT:
+                    // Duże kółko
+                    DrawCircle(node.x, node.y, 30, GREEN);
+                    DrawText(node.name.c_str(), node.x - 25, node.y - 45, 18, BLACK);
+                    break;
+
+                default:
+                    // Wszystkie inne typy
+                    DrawCircle(node.x, node.y, 20, BLUE);
+                    DrawText(node.name.c_str(), node.x - 25, node.y - 35, 18, BLACK);
+                    break;
+            }
         }
     }
 
@@ -57,6 +73,5 @@ namespace blueprint {
         DrawText("Lewy przycisk myszy - przewijanie ekranu", 10, 10, 10, BLACK);
         DrawText("Scroll - przyblizanie", 10, 35, 10, BLACK);
     }
-
 
 }

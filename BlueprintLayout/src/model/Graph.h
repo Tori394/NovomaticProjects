@@ -47,5 +47,14 @@ namespace blueprint {
             }
             return Node();
         }
+
+        void updateNodeType(int nodeId, NodeType newType) {
+            for (auto& node : nodes) {
+                if (node.id == nodeId) {
+                    node.type = newType;
+                    break;
+                }
+            }
+        }
     };
 }

@@ -1,21 +1,25 @@
 {
   "nodes": [
     { "id": 1, "name": "Event BeginPlay", "x": 0, "y": 0 },
-    { "id": 2, "name": "Branch", "x": 0, "y": 0 },
-    { "id": 3, "name": "Play Sound (True)", "x": 0, "y": 0 },
-    { "id": 4, "name": "Spawn Actor (False)", "x": 0, "y": 0 },
-    { "id": 5, "name": "Branch", "x": 0, "y": 0 },
-    { "id": 6, "name": "Play Music", "x": 0, "y": 0 },
-    { "id": 7, "name": "Spawn Animal", "x": 0, "y": 0 },
-    { "id": 8, "name": "Spawn Enemy", "x": 0, "y": 0 }
+    { "id": 2, "name": "Event Tick", "x": 0, "y": 0 },
+    { "id": 3, "name": "Initialize Systems", "x": 0, "y": 0 },
+    { "id": 4, "name": "Branch", "x": 0, "y": 0 },
+    { "id": 5, "name": "Update HUD", "x": 0, "y": 0 },
+    { "id": 6, "name": "Play Alert Sound", "x": 0, "y": 0 },
+    { "id": 7, "name": "Branch", "x": 0, "y": 0 },
+    { "id": 8, "name": "Spawn Particles", "x": 0, "y": 0 },
+    { "id": 9, "name": "Game Over Sequence", "x": 0, "y": 0 }
   ],
   "edges": [
-    { "from": 1, "to": 2 },
-    { "from": 2, "to": 3 },
+    { "from": 1, "to": 3 },
     { "from": 2, "to": 4 },
+    { "from": 3, "to": 4 },
     { "from": 4, "to": 5 },
+    { "from": 4, "to": 7 },
     { "from": 5, "to": 6 },
-    { "from": 5, "to": 7 },
-    { "from": 5, "to": 8 }
+    { "from": 7, "to": 8 },
+    { "from": 7, "to": 6 },
+    { "from": 6, "to": 9 },
+    { "from": 8, "to": 9 }
   ]
 }
