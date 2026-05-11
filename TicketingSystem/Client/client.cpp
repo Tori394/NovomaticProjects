@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <fstream>
 #include <windows.h>
 
 // Pipe z serwerem
@@ -35,9 +36,21 @@ public:
     TicketMachine() {
         clientId = GetCurrentProcessId();
 
-        // Mock kasy
-        cashRegister = {{200, 1}, {100, 5}, {50, 2}};
+        std::ifstream file("moneyData.txt");
+        if (file.is_open()) {
+            int amount;
+            int value;
+            while (file>>value>>amount) {
+                cashRegister[value] = amount;
+            }
+            file.close();
+        }
+        else {
+            std::cout<<"Blad otwarcia pliku";
+        }
     }
+
+    int getId() const {return clientId;}
 
     std::vector<int> calculateChange(int amountToReturn) {
         std::vector<int> changeToGive;
@@ -60,15 +73,14 @@ public:
 
     // mock flow
     void startPurchaseFlow() {
-        std::cout << "--- BILETOMAT (ID: " << clientId << ") AKTYWNY ---\n";
-        std::cout << "KOMENDY:\nREZERWUJ NORMALNY\nREZERWUJ UGLOWY\n";
 
         // rezerwacja
         std::string response = sendToServer("REZERWUJ NORMALNY " + std::to_string(clientId));
         std::cout << "Serwer: " << response << "\n";
 
         if (response.find("OK") == 0) {
-            int ticketId = std::stoi(response.substr(3));
+            size_t lastSpace = response.find_last_of(' ');
+            int ticketId = std::stoi(response.substr(lastSpace + 1));
 
             // Cena: 3.50zl, wrzucono: 5.00zl
             std::cout << "Prosze wrzucic monety (Cena: 3.50zl)... [Wrzucasz 5.00zl]\n";
@@ -92,6 +104,8 @@ public:
 
 int main() {
     TicketMachine machine;
+    std::cout << "--- BILETOMAT (ID: " << machine.getId() << ") AKTYWNY ---\n";
+    std::cout << "KOMENDY:\n- REZERWUJ NORMALNY\n- REZERWUJ UGLOWY\n- KUP [id rezerwacji]";
     machine.startPurchaseFlow();
 
     std::cout << "\nNacisnij ENTER, aby wyjsc...";

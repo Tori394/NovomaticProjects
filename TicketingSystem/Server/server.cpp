@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <mutex>
 #include <vector>
@@ -110,12 +111,28 @@ void handleClient(HANDLE hPipe) {
 
 int main() {
     // Inicjalizacja testowej puli biletów
-    for (int i = 1; i <= 5; ++i) {
-        allTickets.push_back({i, TicketType::NORMALNY, TicketStatus::DOSTEPNY, -1});
+    std::ifstream file("ticketsData.txt");
+    int norAmount = 0;
+    int redAmount = 0;
+    if (file.is_open()) {
+        if (file >> norAmount)
+            for (int i = 1; i <= norAmount; ++i) {
+                allTickets.push_back({i, TicketType::NORMALNY, TicketStatus::DOSTEPNY, -1});
+            }
+        if (file >> redAmount)
+            for (int i = 1; i <= redAmount; ++i) {
+            allTickets.push_back({i, TicketType::ULGOWY, TicketStatus::DOSTEPNY, -1});
+        }
+        file.close();
+    }
+    else {
+        std::cout<<"Blad otwarcia pliku";
+        return 1;
     }
 
     std::cout << "=== SERWER URUCHOMIONY ===\n";
     std::thread(timeoutClean).detach(); //osobny watek do ciaglego sprzatania
+    std::cout << "Dostepne bilety: \nNormalne - " << norAmount << "\nUlogiwe - " << redAmount << "\n";
 
     // pipe z klientem
     while (true) {
