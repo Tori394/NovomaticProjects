@@ -2,8 +2,10 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <format>
 #include <fstream>
 #include <windows.h>
+#include <sstream>
 
 // Pipe z serwerem
 std::string sendToServer(const std::string& message) {
@@ -12,7 +14,7 @@ std::string sendToServer(const std::string& message) {
 
     if (hPipe != INVALID_HANDLE_VALUE) {
         DWORD bytesWritten, bytesRead;
-        char buffer[256];
+        char buffer[1024];
 
         WriteFile(hPipe, message.c_str(), message.length(), &bytesWritten, NULL);
 
@@ -31,6 +33,7 @@ class TicketMachine {
 private:
     std::map<int, int, std::greater<int>> cashRegister;
     int clientId;
+    int ticketId = 0;
 
 public:
     TicketMachine() {
@@ -40,23 +43,28 @@ public:
         if (file.is_open()) {
             int amount;
             int value;
-            while (file>>value>>amount) {
+            while (file >> value >> amount) {
                 cashRegister[value] = amount;
             }
             file.close();
         }
         else {
-            std::cout<<"Blad otwarcia pliku";
+            std::cout << "Blad otwarcia pliku";
         }
     }
 
-    int getId() const {return clientId;}
+    TicketMachine(std::map<int, int, std::greater<int>> testCash) {
+        cashRegister = testCash;
+        clientId = 9999; // Test id
+    }
+
+    int getId() const { return clientId; }
 
     std::vector<int> calculateChange(int amountToReturn) {
         std::vector<int> changeToGive;
         auto tempRegister = cashRegister;
 
-        //zachłanny plecakowy do reszty
+        // zachłanny do reszty
         for (auto& [coinValue, coinCount] : tempRegister) {
             while (amountToReturn >= coinValue && coinCount > 0) {
                 amountToReturn -= coinValue;
@@ -71,44 +79,155 @@ public:
         return changeToGive;
     }
 
-    // mock flow
-    void startPurchaseFlow() {
+    void storeNewCoins(std::vector<int> coins) {
+        for (int coin : coins) {
+            cashRegister[coin]++;
+        }
+    }
 
-        // rezerwacja
-        std::string response = sendToServer("REZERWUJ NORMALNY " + std::to_string(clientId));
+    // Zwraca cenę lub -1 przy błędzie połączenia
+    int handleReservation(std::string request) {
+        std::string response = sendToServer(request + " " + std::to_string(clientId));
+
+        if (response == "BLAD_POLACZENIA") {
+            std::cout << "Blad: Brak polaczenia z serwerem.\n";
+            return -1;
+        }
+
         std::cout << "Serwer: " << response << "\n";
 
-        if (response.find("OK") == 0) {
-            size_t lastSpace = response.find_last_of(' ');
-            int ticketId = std::stoi(response.substr(lastSpace + 1));
+        // "OK" "id" "rezerwacji:" ticketId "cena:" price
+        std::stringstream ss(response);
+        std::string temp;
+        int price = 0;
 
-            // Cena: 3.50zl, wrzucono: 5.00zl
-            std::cout << "Prosze wrzucic monety (Cena: 3.50zl)... [Wrzucasz 5.00zl]\n";
-            int insertedCoin = 500;
-            int changeNeeded = insertedCoin - 350;
+        ss >> temp; // "OK"
+        if (temp != "OK") {
+            std::cout << "Serwer odmowil rezerwacji.\n";
+            return -1;
+        }
+        ss >> temp >> temp; // "id" "rezerwacji:"
+        ss >> ticketId;     // numer biletu
+        ss >> temp;         // "cena:"
+        ss >> price;        // cena w groszach
 
-            std::vector<int> change = calculateChange(changeNeeded);
+        return price;
+    }
 
-            // reszta
-            if (change.empty() && changeNeeded > 0) {
-                std::cout << "BLAD: Automat nie ma jak wydac reszty! Zwracam monete.\n";
-                sendToServer("ANULUJ " + std::to_string(ticketId) + " " + std::to_string(clientId));
+    void handleCancel() {
+        std::cout << "Anulowanie\n";
+        sendToServer("ANULUJ " + std::to_string(ticketId) + " " + std::to_string(clientId));
+        ticketId = 0;
+    }
+
+    // Zwraca true jeśli transakcja zakończona (kupiono lub anulowano)
+    bool handlePurchase(std::string request, int price) {
+        std::vector<int> insertedCoins;
+        int inserted = 0;
+
+        std::cout << "\n=== EKRAN PLATNOSCI ===\n";
+        std::cout << "Cena biletu: " << std::format("{:.2f}", price / 100.0) << " zl\n";
+        std::cout << "Akceptowane monety (w groszach): 500, 200, 100, 50, 20, 10, 5, 2, 1\n";
+        std::cout << "Wpisz 0 by anulowac\n";
+
+        while (inserted < price) {
+            std::cout << "Wrzucono: " << std::format("{:.2f}", inserted / 100.0)
+                      << " / " << std::format("{:.2f}", price / 100.0)
+                      << " zl. Wrzuc monete (w gr): ";
+
+            int coin;
+            if (!(std::cin >> coin)) {
+                std::cin.clear();
+                std::cin.ignore(10000, '\n');
+                continue;
+            }
+            std::cin.ignore(10000, '\n');
+
+            if (coin == 0) {
+                handleCancel();
+                return true; // transakcja zakończona (anulowana)
+            } else if (coin == 500 || coin == 200 || coin == 100 || coin == 50 ||
+                       coin == 20  || coin == 10  || coin == 5   || coin == 2  || coin == 1) {
+                inserted += coin;
+                insertedCoins.push_back(coin);
             } else {
-                cashRegister[insertedCoin]++;
-                std::string finalResp = sendToServer("KUP " + std::to_string(ticketId) + " " + std::to_string(clientId));
-                std::cout << "Serwer: " << finalResp << "\nReszta wydana poprawnie.\n";
+                std::cout << "UWAGA: Nierozpoznana moneta. Zwracam: " << coin << " gr\n";
             }
         }
+
+        int changeNeeded = inserted - price;
+        std::cout << "\nPrzetwarzanie platnosci... Do wydania: "
+                  << std::format("{:.2f}", changeNeeded / 100.0) << " zl\n";
+
+        std::vector<int> change = calculateChange(changeNeeded);
+
+        if (change.empty() && changeNeeded > 0) {
+            std::cout << "BLAD: Automat nie ma jak wydac reszty! Zwracam monety.\n";
+            sendToServer("ANULUJ " + std::to_string(ticketId) + " " + std::to_string(clientId));
+            ticketId = 0;
+        } else {
+            std::string finalResp = sendToServer("KUP " + std::to_string(ticketId) + " " + std::to_string(clientId));
+            std::cout << "Serwer: " << finalResp << "\n";
+
+            std::stringstream ss(finalResp);
+            std::string temp;
+            ss>>temp;
+            if (temp!="!!!") {
+                storeNewCoins(insertedCoins);
+                if (!change.empty() ) {
+                    std::cout << "Wydana reszta (w gr):";
+                    for (int c : change) std::cout << " " << c;
+                    std::cout << "\n";
+                }
+            }
+            ticketId = 0;
+        }
+        return true;
     }
 };
 
 int main() {
     TicketMachine machine;
+    int price = 0;
     std::cout << "--- BILETOMAT (ID: " << machine.getId() << ") AKTYWNY ---\n";
-    std::cout << "KOMENDY:\n- REZERWUJ NORMALNY\n- REZERWUJ UGLOWY\n- KUP [id rezerwacji]";
-    machine.startPurchaseFlow();
+    std::cout << "KOMENDY:\n- REZERWUJ NORMALNY\n- REZERWUJ ULGOWY\n- KUP\n- ANULUJ\n- KONIEC\n\n";
 
-    std::cout << "\nNacisnij ENTER, aby wyjsc...";
-    std::cin.get();
+    std::string request = "";
+    while (request != "KONIEC") {
+        std::cout << "> ";
+        std::getline(std::cin, request);
+
+        if (request.find("KUP") == 0) {
+            if (price <= 0) {
+                std::cout << "Nalezy najpierw zarezerwowac bilet!\n";
+            } else {
+                machine.handlePurchase(request, price);
+                price = 0;
+            }
+        }
+        else if (request.find("REZERWUJ") == 0) {
+            if (price > 0) {
+                std::cout << "Juz wybrano inny bilet! Anuluj go najpierw.\n";
+            } else {
+                int result = machine.handleReservation(request);
+                if (result > 0) {
+                    price = result;
+                }
+            }
+        }
+        else if (request.find("ANULUJ") == 0) {
+            if (price <= 0) {
+                std::cout << "Brak aktywnej rezerwacji.\n";
+            } else {
+                machine.handleCancel();
+                price = 0; //
+            }
+        }
+        else if (request != "KONIEC") {
+            std::cout << "Nieprawidlowa komenda\n";
+        }
+    }
+
+    std::cout << "Do widzenia!\n";
     return 0;
 }

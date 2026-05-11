@@ -14,6 +14,19 @@ using namespace biletomat;
 // MAGAZYN
 std::vector<Ticket> allTickets;
 std::mutex ticketMutex;
+int norPrice;
+int redPrice;
+int norAmount;
+int redAmount;
+
+int countAvailable(TicketType type) {
+    int count = 0;
+    for (const auto& ticket : allTickets) {
+        if (ticket.type == type && ticket.status == TicketStatus::DOSTEPNY)
+            count++;
+    }
+    return count;
+}
 
 // Watek do kontroli timeoutow
 void timeoutClean() {
@@ -24,7 +37,8 @@ void timeoutClean() {
 
         for (auto& ticket : allTickets) {
             if (ticket.status == TicketStatus::ZAREZERWOWANY) {
-                auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(now - ticket.reservationTime).count();
+                auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+                    now - ticket.reservationTime).count();
                 if (elapsedSeconds >= 60) {
                     std::cout << "[TIMEOUT] Rezerwacja na bilet nr " << ticket.id << " anulowana\n";
                     ticket.status = TicketStatus::DOSTEPNY;
@@ -37,7 +51,7 @@ void timeoutClean() {
 
 // Obsługa klienta
 void handleClient(HANDLE hPipe) {
-    char buffer[256];
+    char buffer[1024];
     DWORD bytesRead, bytesWritten;
 
     if (ReadFile(hPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL)) {
@@ -49,12 +63,11 @@ void handleClient(HANDLE hPipe) {
         std::string action, typeStr;
         int clientId, ticketId;
 
-        // Kody klienta
         if (request.find("REZERWUJ") == 0) {
             iss >> action >> typeStr >> clientId;
             TicketType reqType = (typeStr == "NORMALNY") ? TicketType::NORMALNY : TicketType::ULGOWY;
+            int price = (typeStr == "NORMALNY") ? norPrice : redPrice;
 
-            // tranzakcja
             std::lock_guard<std::mutex> lock(ticketMutex);
             bool found = false;
             for (auto& ticket : allTickets) {
@@ -62,7 +75,8 @@ void handleClient(HANDLE hPipe) {
                     ticket.status = TicketStatus::ZAREZERWOWANY;
                     ticket.ownerClientId = clientId;
                     ticket.reservationTime = std::chrono::steady_clock::now();
-                    response = "OK id rezerwacji: " + std::to_string(ticket.id);
+                    response = "OK id rezerwacji: " + std::to_string(ticket.id)
+                             + " cena: " + std::to_string(price);
                     found = true;
                     break;
                 }
@@ -73,32 +87,42 @@ void handleClient(HANDLE hPipe) {
             iss >> action >> ticketId >> clientId;
 
             std::lock_guard<std::mutex> lock(ticketMutex);
+            bool found = false;
             for (auto& ticket : allTickets) {
                 if (ticket.id == ticketId) {
-                    if (ticket.status == TicketStatus::ZAREZERWOWANY && ticket.ownerClientId == clientId) {
+                    found = true;
+                    if (ticket.status == TicketStatus::ZAREZERWOWANY
+                        && ticket.ownerClientId == clientId) {
                         ticket.status = TicketStatus::KUPIONY;
                         response = "Bilet wydrukowany";
                     } else {
-                        response = "!!!Sesja wygasla lub zly nr rezerwacji!!!";
+                        response = "!!! Sesja wygasla lub zly nr rezerwacji !!!";
                     }
                     break;
                 }
             }
+            if (!found) response = "!!! Nie znaleziono biletu !!!";
+
+            std::cout << "Dostepne bilety: \nNormalne - " << countAvailable(TicketType::NORMALNY)
+                      << "\nUlgowe  - " << countAvailable(TicketType::ULGOWY) << "\n";
+
         } else if (request.find("ANULUJ") == 0) {
             iss >> action >> ticketId >> clientId;
 
             std::lock_guard<std::mutex> lock(ticketMutex);
+            bool found = false;
             for (auto& ticket : allTickets) {
                 if (ticket.id == ticketId && ticket.ownerClientId == clientId) {
                     ticket.status = TicketStatus::DOSTEPNY;
                     ticket.ownerClientId = -1;
                     response = "Anulowano rezerwacje";
+                    found = true;
                     break;
                 }
             }
+            if (!found) response = "!!! Nie znaleziono rezerwacji !!!";
         }
 
-        // informacja zwrotna
         WriteFile(hPipe, response.c_str(), response.length(), &bytesWritten, NULL);
     }
 
@@ -110,35 +134,41 @@ void handleClient(HANDLE hPipe) {
 //===================== MAIN =========================
 
 int main() {
-    // Inicjalizacja testowej puli biletów
     std::ifstream file("ticketsData.txt");
-    int norAmount = 0;
-    int redAmount = 0;
     if (file.is_open()) {
-        if (file >> norAmount)
+        if (file >> norAmount) {
             for (int i = 1; i <= norAmount; ++i) {
                 allTickets.push_back({i, TicketType::NORMALNY, TicketStatus::DOSTEPNY, -1});
             }
-        if (file >> redAmount)
-            for (int i = 1; i <= redAmount; ++i) {
-            allTickets.push_back({i, TicketType::ULGOWY, TicketStatus::DOSTEPNY, -1});
         }
+        if (file >> redAmount) {
+            for (int i = norAmount + 1; i <= norAmount + redAmount; ++i) {
+                allTickets.push_back({i, TicketType::ULGOWY, TicketStatus::DOSTEPNY, -1});
+            }
+        }
+        file >> norPrice;
+        file >> redPrice;
         file.close();
     }
     else {
-        std::cout<<"Blad otwarcia pliku";
+        std::cout << "Blad otwarcia pliku\n";
         return 1;
     }
 
     std::cout << "=== SERWER URUCHOMIONY ===\n";
-    std::thread(timeoutClean).detach(); //osobny watek do ciaglego sprzatania
-    std::cout << "Dostepne bilety: \nNormalne - " << norAmount << "\nUlogiwe - " << redAmount << "\n";
+    std::cout << "Dostepne bilety: \nNormalne - " << norAmount
+              << "\nUlgowe  - " << redAmount << "\n";
+    std::cout << "Ceny: Normalny=" << norPrice << " gr, Ulgowy=" << redPrice << " gr\n\n";
 
-    // pipe z klientem
+    std::thread(timeoutClean).detach();
+
     while (true) {
         HANDLE hPipe = CreateNamedPipe("\\\\.\\pipe\\BiletomatPipe",
-            PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-            PIPE_UNLIMITED_INSTANCES, 512, 512, 0, NULL);
+            PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+            PIPE_UNLIMITED_INSTANCES,
+            1024, 1024,
+            0, NULL);
 
         if (hPipe != INVALID_HANDLE_VALUE) {
             if (ConnectNamedPipe(hPipe, NULL)) {

@@ -1,5 +1,3 @@
-find_package(GTest REQUIRED)
-
 add_executable(Serwer Server/server.cpp)
 add_executable(Klient Client/client.cpp)
 
